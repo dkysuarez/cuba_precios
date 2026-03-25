@@ -1,0 +1,41 @@
+{
+  "total_raw": 1573,
+  "descartados": 0,
+  "duplicados": 204,
+  "recategorizados": 630,
+  "sin_precio": 87,
+  "sin_telefono": 54,
+  "sin_provincia": 1151,
+  "por_categoria": {
+    "modem": 107,
+    "laptop": 180,
+    "cd": 25,
+    "impresora": 80,
+    "monitor": 132,
+    "disco": 177,
+    "teclado": 118,
+    "cpu": 49,
+    "ram": 144,
+    "chasis": 92,
+    "pc": 28,
+    "ups": 41,
+    "sonido": 46,
+    "motherboard": 12,
+    "gpu": 23,
+    "webcam": 81,
+    "dvd": 34
+  },
+  "por_provincia": {
+    "Sin provincia": 1151,
+    "La Habana": 217,
+    "Artemisa": 1
+  },
+  "total_final": 1369,
+  "con_precio": 1282,
+  "con_telefono": 1315,
+  "con_provincia": 218,
+  "con_vendedor": 1280,
+  "tasa_cup_usd": 385.0,
+  "tasa_mlc_usd": 1.05,
+  "fecha": "2026-03-24T19:56:25.544018"
+}
