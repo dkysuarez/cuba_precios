@@ -16,7 +16,7 @@ from playwright.sync_api import sync_playwright, Playwright, TimeoutError
 from loguru import logger
 
 sys.path.append(str(Path(__file__).resolve().parent))
-from config import RAW_FACEBOOK, LOGS_DIR, BASE_DIR, crear_estructura
+from cuba_precios.config import RAW_FACEBOOK, LOGS_DIR, BASE_DIR, crear_estructura
 
 # ─────────────────────────────────────────
 # SETUP
