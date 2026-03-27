@@ -34,13 +34,74 @@ html, body, [class*="css"], .stApp {
     color: #1a1a2e;
 }
 
-/* Sidebar limpio */
-section[data-testid="stSidebar"] {
-    background-color: #ffffff;
-    border-right: 1px solid #e8eaf0;
+/* SIDEBAR - FIX para Streamlit Cloud */
+[data-testid="stSidebar"] {
+    display: block !important;
+    visibility: visible !important;
+    background-color: #ffffff !important;
+    border-right: 1px solid #e8eaf0 !important;
+    min-width: 300px !important;
+    width: 300px !important;
+    transform: translateX(0px) !important;
+    position: relative !important;
+    z-index: 999 !important;
 }
-section[data-testid="stSidebar"] * {
-    color: #1a1a2e !important;
+
+/* Forzar que el sidebar no se oculte en modo responsive */
+@media (max-width: 2000px) {
+    [data-testid="stSidebar"] {
+        transform: none !important;
+        width: 300px !important;
+        min-width: 300px !important;
+        margin-left: 0 !important;
+        position: relative !important;
+    }
+}
+
+/* Evitar que el sidebar se colapse automáticamente */
+[data-testid="stSidebarCollapsed"] {
+    display: none !important;
+}
+
+/* Asegurar que el botón de colapsar sea visible */
+[data-testid="stSidebarCollapseButton"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: fixed !important;
+    top: 1rem !important;
+    left: 310px !important;
+    z-index: 1000 !important;
+    background: white !important;
+    border-radius: 50% !important;
+    width: 32px !important;
+    height: 32px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+}
+
+/* Estilo del botón de colapsar al hacer hover */
+[data-testid="stSidebarCollapseButton"]:hover {
+    background: #f0f2f7 !important;
+    cursor: pointer !important;
+}
+
+/* Asegurar que el botón de colapsar no se oculte en móviles */
+@media (max-width: 768px) {
+    [data-testid="stSidebarCollapseButton"] {
+        left: 10px !important;
+        top: 10px !important;
+        position: fixed !important;
+    }
+    
+    [data-testid="stSidebar"] {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        height: 100vh !important;
+        overflow-y: auto !important;
+        z-index: 1000 !important;
+        transform: translateX(0px) !important;
+    }
 }
 
 /* Contenido principal */
@@ -101,9 +162,6 @@ section[data-testid="stSidebar"] * {
     margin-bottom: 0.8rem;
     margin-top: 0.2rem;
 }
-
-/* Tabs personalizados — ocultar los feos de streamlit */
-div[data-testid="stHorizontalBlock"] {}
 
 /* Tabla limpia */
 .stDataFrame {
