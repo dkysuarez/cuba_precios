@@ -34,7 +34,7 @@ html, body, [class*="css"], .stApp {
     color: #1a1a2e;
 }
 
-/* SIDEBAR - FIX para Streamlit Cloud */
+/* SIDEBAR - fijo sin botón de colapsar */
 [data-testid="stSidebar"] {
     display: block !important;
     visibility: visible !important;
@@ -58,53 +58,18 @@ html, body, [class*="css"], .stApp {
     }
 }
 
-/* Evitar que el sidebar se colapse automáticamente */
+/* Ocultar completamente el botón de colapsar */
+[data-testid="stSidebarCollapseButton"] {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* Ocultar el botón colapsado también */
 [data-testid="stSidebarCollapsed"] {
     display: none !important;
 }
 
-/* Asegurar que el botón de colapsar sea visible */
-[data-testid="stSidebarCollapseButton"] {
-    display: flex !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    position: fixed !important;
-    top: 1rem !important;
-    left: 310px !important;
-    z-index: 1000 !important;
-    background: white !important;
-    border-radius: 50% !important;
-    width: 32px !important;
-    height: 32px !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
-}
-
-/* Estilo del botón de colapsar al hacer hover */
-[data-testid="stSidebarCollapseButton"]:hover {
-    background: #f0f2f7 !important;
-    cursor: pointer !important;
-}
-
-/* Asegurar que el botón de colapsar no se oculte en móviles */
-@media (max-width: 768px) {
-    [data-testid="stSidebarCollapseButton"] {
-        left: 10px !important;
-        top: 10px !important;
-        position: fixed !important;
-    }
-    
-    [data-testid="stSidebar"] {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        height: 100vh !important;
-        overflow-y: auto !important;
-        z-index: 1000 !important;
-        transform: translateX(0px) !important;
-    }
-}
-
-/* Contenido principal */
+/* Asegurar que el contenido principal no tenga margin extra */
 .block-container {
     padding-top: 2rem;
     max-width: 1200px;
