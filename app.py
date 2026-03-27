@@ -11,7 +11,6 @@ import plotly.graph_objects as go
 from pathlib import Path
 import sys
 
-sys.path.append(str(Path(__file__).resolve().parents[1]))
 from config import DB_PATH
 
 st.set_page_config(
@@ -435,7 +434,8 @@ def pagina_inicio(df: pd.DataFrame, cat: str):
     with col_der:
         st.markdown('<div class="seccion">Anuncios recientes</div>',
                     unsafe_allow_html=True)
-        recientes = df_cat.sort_values("fecha_scraping", ascending=False).head(8)
+        col_fecha = "fecha" if "fecha" in df_cat.columns else "fecha_scraping"
+        recientes = df_cat.sort_values(col_fecha, ascending=False, na_position="last").head(8)
         for _, row in recientes.iterrows():
             precio = f"${row['precio_usd']:.0f}" if pd.notna(row["precio_usd"]) else "—"
             titulo = str(row["titulo"])[:55] + "..." if len(str(row["titulo"])) > 55 else str(row["titulo"])
