@@ -1,15 +1,19 @@
 """
-Limpiador Unificado — CubaPrecios v8.4
-PRIORIDAD DE EQUIPOS COMPLETOS
+Limpiador Unificado — CubaPrecios v8.6
+PRIORIDAD DE EQUIPOS COMPLETOS + LIMPIEZA AVANZADA DE TÍTULOS + FORZADO DE CATEGORÍA
 
-CORRECCIONES v8.4:
-- TELEVISOR / SMART TV → siempre MONITOR (filtro temprano antes de todo)
-- "all in one" en impresora NO activa PC (impresoras subieron al Paso 1)
-- Router D-Link y variantes → MODEM (añadidos dlink, d-link, ac1200, ac3000, etc.)
-- Chasis con fanes RGB/ARGB ya no se autoexcluye ("led" quitado de excluir de chasis)
-- "televisor", "smart tv", "tv led", "tv 4k" añadidos a excluir de PC, laptop, cpu, disco, gpu, ram
-- "impresora", "epson", "canon", "brother", "hp laserjet", "tinta" añadidos a excluir de PC
-- "all in one" sólo activa PC si NO hay palabras de impresora en el texto
+CAMBIOS v8.6 (fixes):
+- FIX CRÍTICO: procesar_revolico() ahora lee precio_usd directamente del JSON
+  cuando el scraper ya lo calculó (campo "precio_usd"), evitando que todos los
+  anuncios sean descartados por precio nulo.
+- FIX: precio_texto lee "precio_texto" además de "precio_raw" / "precio".
+- FIX: num_imagenes lee "num_imagenes" del JSON además de contar lista "imagenes".
+- FIX: imagen_principal lee "imagen_principal" del JSON además de "imagenes[0]".
+- FIX PROVINCIAS: PROVINCIAS_NORM ampliado con todas las variantes con/sin tilde,
+  abreviaturas coloquiales y municipios que Revolico usa como provincia.
+- FIX: detectar_provincia() ahora intenta coincidencia parcial (subcadena) como
+  último recurso antes de devolver None, para cubrir valores como
+  "Pinar del Río (ciudad)" o "La Habana - Playa".
 """
 
 import json
@@ -106,7 +110,7 @@ ES_SERVICIO = [
 ]
 
 # ─────────────────────────────────────────
-# PREFIJOS A LIMPIAR DEL TÍTULO
+# PREFIJOS A LIMPIAR DEL TÍTULO (versión extendida)
 # ─────────────────────────────────────────
 PREFIJOS_BASURA = [
     r'^vendo\s+', r'^se vende\s+', r'^venta\s+de\s+',
@@ -116,11 +120,17 @@ PREFIJOS_BASURA = [
     r'^super\s+ganga\s*[!.]*\s*', r'^precio\s+',
     r'^urgente\s+', r'^oportunidad\s+',
     r'[!❗❌✅⚠️💥🔥]+\s*',
+    # Nuevos patrones para ruido común
+    r'^cañón[\s_]+', r'^cañon[\s_]+', r'^nos fuimos[\s_]+', r'^gaming[\s_]+',
+    r'^chasis[\s_]+', r'^fuente[\s_]+', r'^memoria[\s_]+', r'^procesador[\s_]+',
+    r'^tarjeta[\s_]+', r'^laptop[\s_]+', r'^pc[\s_]+', r'^monitor[\s_]+',
+    r'^cargador[\s_]+', r'^bateria[\s_]+', r'^accesorio[\s_]+',
+    r'^venta[\s_]+', r'^oferta[\s_]+', r'^nuevo[\s_]+', r'^original[\s_]+',
+    r'^[A-ZÁÉÍÓÚÑ]{2,}[\s_]+',  # Palabras en mayúsculas seguidas de espacio (ej: "CAÑÓN ")
 ]
 
 # ─────────────────────────────────────────
 # FIX: palabras que identifican TV/televisor
-# Se usan para filtro temprano (Paso 0)
 # ─────────────────────────────────────────
 PALABRAS_TV = [
     "televisor", "smart tv", "tv led", "tv 4k", "tv uhd",
@@ -132,7 +142,6 @@ PALABRAS_TV = [
 
 # ─────────────────────────────────────────
 # FIX: palabras que identifican impresoras
-# Se usan para proteger PC del "all in one"
 # ─────────────────────────────────────────
 PALABRAS_IMPRESORA = [
     "impresora", "multifuncional", "laserjet", "inkjet",
@@ -143,10 +152,35 @@ PALABRAS_IMPRESORA = [
 ]
 
 # ─────────────────────────────────────────
-# REGLAS DE CATEGORÍA V8.4
-# ORDEN JERÁRQUICO: TV → IMPRESORAS → EQUIPOS COMPLETOS → RESTO
+# FORZAR CATEGORÍA POR PALABRAS CLAVE (título limpio)
 # ─────────────────────────────────────────
+FORZAR_CATEGORIA = {
+    "fuente": "chasis",
+    "gabinete": "chasis",
+    "chasis": "chasis",
+    "psu": "chasis",
+    "ups": "ups",
+    "nobreak": "ups",
+    "regulador": "ups",
+    "procesador": "cpu",
+    "cpu": "cpu",
+    "motherboard": "motherboard",
+    "placa madre": "motherboard",
+    "tarjeta de video": "gpu",
+    "gtx": "gpu",
+    "rtx": "gpu",
+    "disco duro": "disco",
+    "ssd": "disco",
+    "memoria ram": "ram",
+    "ram ddr": "ram",
+    "monitor": "monitor",
+    "laptop": "laptop",
+    "impresora": "impresora",
+}
 
+# ─────────────────────────────────────────
+# REGLAS DE CATEGORÍA V8.6 (misma jerarquía que antes)
+# ─────────────────────────────────────────
 EQUIPOS_COMPLETOS = ["pc", "laptop"]
 
 REGLAS_CATEGORIA = [
@@ -158,11 +192,11 @@ REGLAS_CATEGORIA = [
             "aio", "equipo completo", "pc lista",
             "torre lista", "pc para usar", "mini pc", "optiplex",
             "nuc", "intel nuc", "pc mini", "computadora completa",
+            "en pc", "vendo pc", "pc y laptop", "pc y laptops",
+            "laptops y pc", "pcs y laptops",
         ],
-        # FIX: quitado "all in one" de aquí (se maneja con guarda especial)
-        # FIX: añadidos televisor, smart tv, impresora y variantes a excluir
         "excluir": [
-            "laptop", "notebook", "monitor", "solo", "disco solo",
+            "notebook", "monitor", "solo", "disco solo",
             "ram solo", "procesador solo", "tarjeta video solo",
             "sin", "falta",
             "televisor", "smart tv", "tv led", "tv 4k", "tv uhd",
@@ -171,28 +205,29 @@ REGLAS_CATEGORIA = [
         ],
         "es_equipo_completo": True,
     }),
-
     # ========== 2. LAPTOPS ==========
     ("laptop", {
         "palabras_clave": [
             "laptop", "notebook", "macbook", "thinkpad", "ideapad",
             "vivobook", "ultrabook", "chromebook", "portatil", "portátil",
-            "hp envy", "dell inspiron", "lenovo legion", "asus rog",
+            "hp envy", "dell inspiron", "lenovo legion",
             "2 en 1",
+            "horas bateria", "horas batería", "horas de bateria", "horas de batería",
+            "autonomia bateria", "autonomía batería",
         ],
-        # FIX: quitado "touch" y "convertible" (demasiado genéricos)
-        # FIX: añadidos televisor y smart tv a excluir
         "excluir": [
-            "funda", "cargador", "bateria", "cooler", "base", "mouse",
+            "funda", "cargador", "bateria laptop", "cooler", "base", "mouse",
             "teclado", "monitor", "torre", "gabinete", "disco externo",
             "memoria usb", "pendrive",
             "televisor", "smart tv", "tv led", "tv 4k", "tv uhd",
             "impresora",
+            "compatible con", "para laptop", "para pc", "microfono",
+            "micrófono", "bocina", "parlante", "auricular",
+            "rtx", "gtx", "tarjeta de video", "tarjeta grafica", "tarjeta gráfica",
         ],
         "es_equipo_completo": True,
     }),
-
-    # ========== 3. MONITORES (incluye Smart TV — pero el Paso 0 ya los atrapa) ==========
+    # ========== 3. MONITORES ==========
     ("monitor", {
         "palabras_clave": [
             "monitor", "pantalla", "display", "144hz", "165hz", "240hz",
@@ -209,11 +244,12 @@ REGLAS_CATEGORIA = [
             "gpu", "teclado", "mouse", "impresora", "router",
             "playstation", "ps4", "ps5", "xbox", "nintendo",
             "chasis", "fuente", "case",
+            "soporte monitor", "soporte para monitor", "brazo monitor",
+            "bracket monitor", "vesa",
         ],
         "es_equipo_completo": False,
     }),
-
-    # ========== 4. IMPRESORAS (subidas a posición alta) ==========
+    # ========== 4. IMPRESORAS ==========
     ("impresora", {
         "palabras_clave": [
             "impresora", "multifuncional", "laserjet", "inkjet", "plotter",
@@ -230,7 +266,6 @@ REGLAS_CATEGORIA = [
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 5. TARJETAS DE VIDEO (GPU) ==========
     ("gpu", {
         "palabras_clave": [
@@ -238,7 +273,6 @@ REGLAS_CATEGORIA = [
             "gtx", "rtx", "radeon", "nvidia", "amd radeon",
             "video card", "gpu", "geforce",
         ],
-        # FIX: añadidos televisor y smart tv a excluir
         "excluir": [
             "laptop", "monitor", "pc completa", "torre completa",
             "impresora", "teclado", "mouse",
@@ -246,17 +280,18 @@ REGLAS_CATEGORIA = [
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 6. PROCESADORES (CPU) ==========
     ("cpu", {
         "palabras_clave": [
             "procesador", "microprocesador", "intel core",
             "amd ryzen", "ryzen 3", "ryzen 5", "ryzen 7", "ryzen 9",
             "cpu intel", "cpu amd",
-            # FIX: i3/i5/i7/i9 se manejan abajo con word boundary SOLO si
-            #      no hay contexto de TV (ver lógica especial en detección)
+            "ryzen3", "ryzen5", "ryzen7", "ryzen9",
+            "3200g", "3400g", "4650g", "5600g", "5700g",
+            "14th gen", "13th gen", "12th gen", "11th gen", "10th gen",
+            "14600k", "13600k", "12600k", "13700k", "14700k",
+            "14900k", "13900k", "12900k",
         ],
-        # FIX: añadidos televisor y smart tv a excluir
         "excluir": [
             "laptop", "monitor", "pc completa", "torre", "tarjeta",
             "disco", "ram", "mouse", "teclado", "impresora",
@@ -266,7 +301,6 @@ REGLAS_CATEGORIA = [
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 7. MOTHERBOARDS ==========
     ("motherboard", {
         "palabras_clave": [
@@ -274,73 +308,69 @@ REGLAS_CATEGORIA = [
             "tarjeta madre", "socket", "b450", "b550", "b650",
             "z690", "z790", "h610", "x570", "a320",
             "kit board", "board y micro", "kit de board",
+            "a520", "a520m", "b560", "h610m", "b760",
+            "pro de msi", "msi pro", "asus prime", "gigabyte b",
+            "asrock b", "asrock h",
         ],
         "excluir": [
-            "laptop", "monitor", "pc completa", "ram", "procesador",
-            "mouse", "teclado", "impresora",
+            "laptop", "monitor", "pc completa", "mouse", "teclado", "impresora",
             "televisor", "smart tv",
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 8. MEMORIAS RAM ==========
     ("ram", {
         "palabras_clave": [
             "memoria ram", "ram ddr", "ddr3", "ddr4", "ddr5",
             "sodimm", "dimm", "ram 8gb", "ram 16gb", "ram 32gb",
         ],
-        # FIX: añadidos televisor y smart tv a excluir
         "excluir": [
             "usb", "pendrive", "flash", "micro sd", "tarjeta memoria",
             "laptop completa", "pc completa", "disco", "ssd",
             "memoria usb", "memoria flash", "kit mouse", "kit teclado",
             "televisor", "smart tv",
+            "dell inspiron", "hp envy", "lenovo", "thinkpad", "macbook",
+            "ideapad", "vivobook", "notebook",
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 9. DISCOS DUROS / SSD ==========
     ("disco", {
         "palabras_clave": [
-            "disco duro", "disco ssd", "ssd", "hdd", "nvme",
+            "disco duro", "disco ssd", "hdd", "nvme",
             "m.2", "m2", "disco solido", "disco mecanico",
             "disco externo", "seagate", "western digital",
             "toshiba", "adata", "transcend", "disco portatil",
         ],
-        # FIX: quitado "externo" solo (demasiado genérico), mantenido en frases
-        # FIX: añadidos televisor y smart tv a excluir
         "excluir": [
-            "laptop", "pc completa", "memoria usb", "pendrive",
+            "laptop", "notebook", "pc completa", "memoria usb", "pendrive",
             "teclado", "mouse", "impresora", "monitor", "ram",
             "televisor", "smart tv",
+            "dell inspiron", "hp envy", "lenovo", "thinkpad", "macbook",
+            "ideapad", "vivobook", "asus rog laptop",
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 10. CHASIS Y FUENTES ==========
     ("chasis", {
         "palabras_clave": [
-            "chasis", "gabinete", "torre", "case", "fuente de poder",
+            "chasis", "gabinete", "case", "fuente de poder",
             "fuente corsair", "fuente evga", "psu", "fuente 500w",
             "fuente 600w", "fuente 750w", "fuente 850w",
             "fuente atx", "gabinete gamer", "full tower", "mid tower",
             "fuente certificada", "fuente 80 plus",
-            # FIX: añadidos modelos comunes de chasis gaming
             "montech", "sama", "nzxt", "phanteks", "fractal",
-            "deepcool", "cooler master case", "lian li",
+            "deepcool", "cooler master case", "lian li", "tooq",
             "fanes rgb", "fanes argb", "fan rgb", "fan argb",
         ],
-        # FIX: quitado "led" de excluir (los chasis gaming mencionan LED/RGB constantemente)
-        #      reemplazado por "led tv" y "led monitor" que son más específicos
         "excluir": [
-            "laptop", "monitor", "pc completa", "teclado", "mouse",
+            "laptop", "pc completa", "teclado", "mouse",
             "impresora", "pantalla", "lcd", "ups", "nobreak",
             "bateria", "regulador", "led tv", "led monitor",
             "televisor", "smart tv",
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 11. UPS Y BATERÍAS ==========
     ("ups", {
         "palabras_clave": [
@@ -355,7 +385,6 @@ REGLAS_CATEGORIA = [
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 12. ROUTERS Y REDES ==========
     ("modem", {
         "palabras_clave": [
@@ -363,7 +392,6 @@ REGLAS_CATEGORIA = [
             "access point", "repetidor", "antena wifi", "modem",
             "nauta", "etecsa", "tarjeta de red", "wifi pci",
             "extensor wifi", "mesh",
-            # FIX: añadidos D-Link y modelos comunes no reconocidos antes
             "dlink", "d-link", "d link", "asus router", "netgear",
             "ubiquiti", "unifi", "ac750", "ac1200", "ac1750",
             "ac3000", "ax3000", "ax6000", "wifi 6", "wifi6",
@@ -374,7 +402,6 @@ REGLAS_CATEGORIA = [
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 13. BOCINAS Y SONIDO ==========
     ("sonido", {
         "palabras_clave": [
@@ -382,50 +409,74 @@ REGLAS_CATEGORIA = [
             "soundbar", "barra sonido", "bafle", "amplificador",
             "jbl", "home theater", "2.1", "5.1", "7.1",
             "bocina bluetooth", "parlante bluetooth",
+            "zizo", "anker soundcore", "marshall", "bose", "harman",
+            "microfono", "micrófono", "brazo microfono", "brazo micrófono",
+            "brazo ajustable", "arm microfono", "pop filter",
+            "interfaz de audio", "interfaz audio", "mezclador",
+            "mixer audio", "audio interface",
         ],
         "excluir": [
-            "laptop", "pc", "monitor", "auricular", "audifono",
-            "headset", "teclado", "mouse",
+            "monitor", "teclado", "mouse",
+            "audifono", "audífonos", "auricular", "auriculares",
+            "headset", "diadema", "in-ear", "over-ear",
+            "microfono usb", "micrófono usb",
+            "microfono gaming", "micrófono gaming",
+            "fifine", "blue yeti", "hyperx",
+            "pc gamer", "pc gaming", "laptop vendo", "vendo laptop",
+            "notebook vendo", "vendo notebook",
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 14. PERIFÉRICOS ==========
     ("periferico", {
         "palabras_clave": [
             "teclado", "mouse", "raton", "webcam", "camara web",
-            "auriculares", "audifonos", "headset", "microfono",
+            "auriculares", "audifonos", "audífonos", "headset", "diadema",
+            "in-ear", "over-ear", "earbuds", "tws",
             "joystick", "gamepad", "control xbox", "control ps4",
             "g502", "logitech", "razer", "corsair", "redragon",
             "teclado mecanico", "teclado gaming", "mouse gaming",
-            "mouse gamer", "diadema", "kit mouse", "kit teclado",
+            "mouse gamer", "kit mouse", "kit teclado",
             "mouse y teclado", "teclado y mouse", "combo teclado",
+            "microfono usb", "micrófono usb", "microfono condensador",
+            "micrófono condensador", "microfono gaming", "micrófono gaming",
+            "fifine", "blue yeti", "hyperx quadcast",
+            "jbl live", "jbl tune", "jbl free", "jbl reflect", "jbl endurance",
+            "sony wh", "sony wf", "sony xm", "bose quietcomfort", "jabra",
+            "sennheiser", "anker soundcore auricular", "beats",
         ],
         "excluir": [
-            "laptop", "pc", "monitor", "impresora", "disco",
+            "monitor", "impresora", "disco",
             "ram", "procesador", "placa", "motherboard",
+            "bocina", "parlante", "speaker", "subwoofer", "soundbar",
+            "micrófono incluido", "microfono incluido",
+            "micrófono integrado", "microfono integrado",
+            "pc gamer", "pc gaming", "laptop vendo", "vendo laptop",
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 15. ACCESORIOS ==========
     ("accesorio", {
         "palabras_clave": [
             "cable", "adaptador", "conversor", "hub", "dock",
-            "cooler", "ventilador", "disipador", "soporte",
+            "cooler", "ventilador", "disipador",
             "base laptop", "cargador", "bateria", "power bank",
             "mouse pad", "alfombrilla", "pendrive", "memoria usb",
             "usb", "micro sd", "tarjeta memoria", "capturadora",
             "usb 3.0", "usb tipo c",
+            "soporte monitor", "soporte para monitor",
+            "soporte laptop", "soporte para laptop",
+            "soporte escritorio", "brazo monitor",
+            "bracket monitor", "vesa",
         ],
         "excluir": [
-            "laptop", "pc", "monitor", "impresora", "disco duro",
+            "impresora", "disco duro",
             "memoria ram", "procesador", "teclado", "mouse",
             "ssd", "hdd", "nvme", "fuente de poder",
+            "pc gamer", "laptop vendo",
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 16. CD / DVD VIRGEN ==========
     ("cd", {
         "palabras_clave": [
@@ -437,7 +488,6 @@ REGLAS_CATEGORIA = [
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 17. LECTORES DVD ==========
     ("dvd", {
         "palabras_clave": [
@@ -449,7 +499,6 @@ REGLAS_CATEGORIA = [
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 18. INTERNET Y NAUTA ==========
     ("internet", {
         "palabras_clave": [
@@ -461,7 +510,6 @@ REGLAS_CATEGORIA = [
         ],
         "es_equipo_completo": False,
     }),
-
     # ========== 19. OTROS ==========
     ("otros", {
         "palabras_clave": [],
@@ -471,23 +519,233 @@ REGLAS_CATEGORIA = [
 ]
 
 # ─────────────────────────────────────────
-# PROVINCIAS
+# PROVINCIAS — v8.6: cobertura total
+# Se incluyen: nombre oficial, sin tilde, abreviaturas coloquiales,
+# municipios que Revolico pone en el campo provincia, y variantes mixtas.
 # ─────────────────────────────────────────
 PROVINCIAS_NORM = {
-    "habana": "La Habana", "la habana": "La Habana",
-    "ciudad habana": "La Habana", "centro habana": "La Habana",
-    "habana vieja": "La Habana", "miramar": "La Habana",
-    "vedado": "La Habana", "playa": "La Habana",
-    "artemisa": "Artemisa", "mayabeque": "Mayabeque",
-    "pinar del rio": "Pinar del Río", "pinar del río": "Pinar del Río",
-    "matanzas": "Matanzas", "cienfuegos": "Cienfuegos",
-    "villa clara": "Villa Clara", "sancti spiritus": "Sancti Spíritus",
-    "sancti spíritus": "Sancti Spíritus", "ciego de avila": "Ciego de Ávila",
-    "camaguey": "Camagüey", "camagüey": "Camagüey",
-    "las tunas": "Las Tunas", "holguin": "Holguín",
-    "holguín": "Holguín", "granma": "Granma",
-    "santiago de cuba": "Santiago de Cuba", "santiago": "Santiago de Cuba",
-    "guantanamo": "Guantánamo", "guantánamo": "Guantánamo",
+    # ── La Habana ──────────────────────────────────────────────────────────
+    "habana":              "La Habana",
+    "la habana":           "La Habana",
+    "ciudad habana":       "La Habana",
+    "ciudad de la habana": "La Habana",
+    "centro habana":       "La Habana",
+    "habana vieja":        "La Habana",
+    "miramar":             "La Habana",
+    "vedado":              "La Habana",
+    "playa":               "La Habana",
+    "marianao":            "La Habana",
+    "boyeros":             "La Habana",
+    "arroyo naranjo":      "La Habana",
+    "cotorro":             "La Habana",
+    "san miguel del padron": "La Habana",
+    "san miguel del padrón": "La Habana",
+    "diez de octubre":     "La Habana",
+    "10 de octubre":       "La Habana",
+    "cerro":               "La Habana",
+    "regla":               "La Habana",
+    "guanabacoa":          "La Habana",
+    "la lisa":             "La Habana",
+    "plaza":               "La Habana",
+    "plaza de la revolución": "La Habana",
+    "plaza de la revolucion": "La Habana",
+
+    # ── Artemisa ──────────────────────────────────────────────────────────
+    "artemisa":            "Artemisa",
+    "san antonio de los baños": "Artemisa",
+    "san antonio de los banos": "Artemisa",
+    "bauta":               "Artemisa",
+    "güira de melena":     "Artemisa",
+    "guira de melena":     "Artemisa",
+    "alquizar":            "Artemisa",
+    "alquízar":            "Artemisa",
+    "caimito":             "Artemisa",
+    "mariel":              "Artemisa",
+    "guanajay":            "Artemisa",
+
+    # ── Mayabeque ─────────────────────────────────────────────────────────
+    "mayabeque":           "Mayabeque",
+    "san jose de las lajas": "Mayabeque",
+    "san josé de las lajas": "Mayabeque",
+    "jaruco":              "Mayabeque",
+    "santa cruz del norte": "Mayabeque",
+    "madruga":             "Mayabeque",
+    "bejucal":             "Mayabeque",
+    "nueva paz":           "Mayabeque",
+    "guines":              "Mayabeque",
+    "güines":              "Mayabeque",
+    "melena del sur":      "Mayabeque",
+
+    # ── Pinar del Río ─────────────────────────────────────────────────────
+    "pinar del rio":       "Pinar del Río",
+    "pinar del río":       "Pinar del Río",
+    "pinar":               "Pinar del Río",
+    "vinales":             "Pinar del Río",
+    "viñales":             "Pinar del Río",
+    "consolacion del sur": "Pinar del Río",
+    "consolación del sur": "Pinar del Río",
+    "san cristobal":       "Pinar del Río",
+    "san cristóbal":       "Pinar del Río",
+    "los palacios":        "Pinar del Río",
+    "la palma":            "Pinar del Río",
+    "bahia honda":         "Pinar del Río",
+    "bahía honda":         "Pinar del Río",
+    "minas de matahambre": "Pinar del Río",
+
+    # ── Matanzas ──────────────────────────────────────────────────────────
+    "matanzas":            "Matanzas",
+    "varadero":            "Matanzas",
+    "cardenas":            "Matanzas",
+    "cárdenas":            "Matanzas",
+    "colon":               "Matanzas",
+    "colón":               "Matanzas",
+    "jovellanos":          "Matanzas",
+    "perico":              "Matanzas",
+    "limonar":             "Matanzas",
+    "union de reyes":      "Matanzas",
+    "unión de reyes":      "Matanzas",
+
+    # ── Cienfuegos ────────────────────────────────────────────────────────
+    "cienfuegos":          "Cienfuegos",
+    "palmira":             "Cienfuegos",
+    "rodas":               "Cienfuegos",
+    "cruces":              "Cienfuegos",
+    "lajas":               "Cienfuegos",
+    "cumanayagua":         "Cienfuegos",
+
+    # ── Villa Clara ───────────────────────────────────────────────────────
+    "villa clara":         "Villa Clara",
+    "santa clara":         "Villa Clara",
+    "caibarien":           "Villa Clara",
+    "caibarién":           "Villa Clara",
+    "sagua la grande":     "Villa Clara",
+    "remedios":            "Villa Clara",
+    "placetas":            "Villa Clara",
+    "camajuani":           "Villa Clara",
+    "camajuaní":           "Villa Clara",
+    "ranchuelo":           "Villa Clara",
+    "manicaragua":         "Villa Clara",
+    "cifuentes":           "Villa Clara",
+
+    # ── Sancti Spíritus ───────────────────────────────────────────────────
+    "sancti spiritus":     "Sancti Spíritus",
+    "sancti spíritus":     "Sancti Spíritus",
+    "spiritus":            "Sancti Spíritus",
+    "spíritus":            "Sancti Spíritus",
+    "trinidad":            "Sancti Spíritus",
+    "yaguajay":            "Sancti Spíritus",
+    "jatibonico":          "Sancti Spíritus",
+    "cabaiguan":           "Sancti Spíritus",
+    "cabaiguán":           "Sancti Spíritus",
+    "fomento":             "Sancti Spíritus",
+    "la sierpe":           "Sancti Spíritus",
+    "taguasco":            "Sancti Spíritus",
+
+    # ── Ciego de Ávila ────────────────────────────────────────────────────
+    "ciego de avila":      "Ciego de Ávila",
+    "ciego de ávila":      "Ciego de Ávila",
+    "ciego":               "Ciego de Ávila",
+    "moron":               "Ciego de Ávila",
+    "morón":               "Ciego de Ávila",
+    "chambas":             "Ciego de Ávila",
+    "florencia":           "Ciego de Ávila",
+    "venezuela":           "Ciego de Ávila",
+    "baraguá":             "Ciego de Ávila",
+    "balagua":             "Ciego de Ávila",
+    "primero de enero":    "Ciego de Ávila",
+
+    # ── Camagüey ──────────────────────────────────────────────────────────
+    "camaguey":            "Camagüey",
+    "camagüey":            "Camagüey",
+    "nuevitas":            "Camagüey",
+    "guaimaro":            "Camagüey",
+    "guáimaro":            "Camagüey",
+    "esmeralda":           "Camagüey",
+    "florida":             "Camagüey",
+    "minas":               "Camagüey",
+    "vertientes":          "Camagüey",
+    "jimaguayu":           "Camagüey",
+
+    # ── Las Tunas ─────────────────────────────────────────────────────────
+    "las tunas":           "Las Tunas",
+    "tunas":               "Las Tunas",
+    "victoria de las tunas": "Las Tunas",
+    "puerto padre":        "Las Tunas",
+    "jobabo":              "Las Tunas",
+    "amancio":             "Las Tunas",
+    "colombia":            "Las Tunas",
+    "manatí":              "Las Tunas",
+    "manati":              "Las Tunas",
+
+    # ── Holguín ───────────────────────────────────────────────────────────
+    "holguin":             "Holguín",
+    "holguín":             "Holguín",
+    "banes":               "Holguín",
+    "bayan":               "Holguín",
+    "gibara":              "Holguín",
+    "moa":                 "Holguín",
+    "mayari":              "Holguín",
+    "mayarí":              "Holguín",
+    "niquero":             "Holguín",
+    "sagua de tanamo":     "Holguín",
+    "sagua de tánamo":     "Holguín",
+    "cueto":               "Holguín",
+    "cacocum":             "Holguín",
+    "urbano noris":        "Holguín",
+    "antilla":             "Holguín",
+
+    # ── Granma ────────────────────────────────────────────────────────────
+    "granma":              "Granma",
+    "bayamo":              "Granma",
+    "manzanillo":          "Granma",
+    "media luna":          "Granma",
+    "niquero":             "Granma",
+    "campechuela":         "Granma",
+    "yara":                "Granma",
+    "jiguani":             "Granma",
+    "jiguaní":             "Granma",
+    "buey arriba":         "Granma",
+    "bartolome maso":      "Granma",
+    "bartolomé masó":      "Granma",
+    "guisa":               "Granma",
+    "rio cauto":           "Granma",
+    "río cauto":           "Granma",
+    "cauto cristo":        "Granma",
+
+    # ── Santiago de Cuba ─────────────────────────────────────────────────
+    "santiago de cuba":    "Santiago de Cuba",
+    "santiago":            "Santiago de Cuba",
+    "palma soriano":       "Santiago de Cuba",
+    "contramaestre":       "Santiago de Cuba",
+    "mella":               "Santiago de Cuba",
+    "san luis":            "Santiago de Cuba",
+    "songo la maya":       "Santiago de Cuba",
+    "songo-la maya":       "Santiago de Cuba",
+    "segundo frente":      "Santiago de Cuba",
+    "guama":               "Santiago de Cuba",
+    "tercer frente":       "Santiago de Cuba",
+
+    # ── Guantánamo ────────────────────────────────────────────────────────
+    "guantanamo":          "Guantánamo",
+    "guantánamo":          "Guantánamo",
+    "baracoa":             "Guantánamo",
+    "yateras":             "Guantánamo",
+    "maisi":               "Guantánamo",
+    "maisí":               "Guantánamo",
+    "niceto perez":        "Guantánamo",
+    "el salvador":         "Guantánamo",
+    "imias":               "Guantánamo",
+    "imías":               "Guantánamo",
+    "san antonio del sur": "Guantánamo",
+    "caimanera":           "Guantánamo",
+
+    # ── Isla de la Juventud ───────────────────────────────────────────────
+    "isla de la juventud": "Isla de la Juventud",
+    "isla juventud":       "Isla de la Juventud",
+    "isla de la juventud": "Isla de la Juventud",
+    "la isla":             "Isla de la Juventud",
+    "nueva gerona":        "Isla de la Juventud",
+    "isla":                "Isla de la Juventud",
 }
 
 
@@ -512,6 +770,20 @@ def limpiar_texto(texto: str) -> str:
     texto = re.sub(r'\s+', ' ', texto).strip()
     texto = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', texto)
     return texto
+
+
+def limpiar_titulo_avanzado(titulo: str) -> str:
+    """Limpia título eliminando ruido al inicio y final"""
+    if not titulo:
+        return ""
+    for patron in PREFIJOS_BASURA:
+        titulo = re.sub(patron, '', titulo, flags=re.IGNORECASE).strip()
+    titulo = re.sub(r'\s*[-–]\s*Img\s+\d+$', '', titulo, flags=re.IGNORECASE).strip()
+    titulo = re.sub(r'\s+\d{7,8}$', '', titulo).strip()
+    palabras = titulo.split()
+    if len(palabras) > 1 and palabras[0].lower() == palabras[1].lower():
+        titulo = ' '.join(palabras[1:])
+    return titulo
 
 
 def limpiar_telefono(tel: str) -> str | None:
@@ -568,7 +840,11 @@ def detectar_moneda(texto: str) -> str:
 
 
 def extraer_precio_usd(raw: dict, fuente: str, moneda: str) -> float | None:
-    """Extrae precio y convierte a USD"""
+    """
+    Extrae precio y convierte a USD.
+    v8.6: para Revolico, primero intenta leer precio_usd directo del JSON
+    (el scraper ya lo calculó), luego precio_texto, precio_raw, precio.
+    """
     if fuente == "facebook":
         precio = raw.get("precio")
         if precio:
@@ -583,7 +859,30 @@ def extraer_precio_usd(raw: dict, fuente: str, moneda: str) -> float | None:
             except (ValueError, TypeError):
                 pass
     else:
-        precio_str = raw.get("precio_raw") or raw.get("precio") or ""
+        # ── FIX v8.6: leer precio_usd ya calculado por el scraper ──────────
+        precio_directo = raw.get("precio_usd")
+        if precio_directo is not None:
+            try:
+                valor = float(precio_directo)
+                if valor > 1:
+                    # El scraper ya entrega USD; igual aplicamos conversión
+                    # si la moneda detectada en precio_texto fuera CUP/MLC
+                    # (situación rara, pero la cubrimos por seguridad)
+                    if moneda == "CUP":
+                        return round(valor / TASA_CUP_USD, 2)
+                    if moneda == "MLC":
+                        return round(valor * TASA_MLC_USD, 2)
+                    return valor
+            except (ValueError, TypeError):
+                pass
+
+        # ── Fallback: parsear desde texto ───────────────────────────────────
+        precio_str = (
+            raw.get("precio_raw") or
+            raw.get("precio_texto") or   # FIX v8.6: añadido precio_texto
+            raw.get("precio") or
+            ""
+        )
         match = re.search(r'\b(\d{1,6}(?:[.,]\d{1,2})?)\b', precio_str)
         if match:
             try:
@@ -600,48 +899,32 @@ def extraer_precio_usd(raw: dict, fuente: str, moneda: str) -> float | None:
 
 
 def _es_tv(texto: str) -> bool:
-    """
-    FIX v8.4: Detecta si el texto habla de un televisor/smart tv.
-    Se llama antes de cualquier otra categorización (Paso 0).
-    """
     return any(p in texto for p in PALABRAS_TV)
 
 
 def _es_impresora(texto: str) -> bool:
-    """
-    FIX v8.4: Detecta si el texto habla de una impresora.
-    Se usa para evitar que "all in one" active la categoría PC.
-    """
     return any(p in texto for p in PALABRAS_IMPRESORA)
 
 
 def detectar_categoria_estricta(titulo: str, descripcion: str = "") -> tuple:
     """
-    Detecta categoría con jerarquía estricta v8.4.
-
-    JERARQUÍA:
-      Paso 0 — Televisores  → siempre monitor
-      Paso 0b — Impresoras  → siempre impresora (evita "all in one" → pc)
-      Paso 1 — PC / Laptop  (equipos completos)
-      Paso 2 — Kits especiales
-      Paso 3 — Monitor
-      Paso 4 — Impresora (por si acaso no la atrapó el Paso 0b)
-      Paso 5 — Resto de componentes / periféricos
-      Paso 6 — Otros
+    Detecta categoría con jerarquía estricta v8.6.
+    Incluye forzado por palabras clave en título limpio.
     """
     texto = (titulo + " " + descripcion).lower()
+    titulo_limpio = limpiar_titulo_avanzado(titulo).lower()
 
-    # ── PASO 0: Televisores — cortocircuito inmediato ──────────────────────
-    # Si el texto menciona "televisor", "smart tv" o variantes, es monitor.
-    # Esto impide que i3/i5/i7 sueltos, "4k", "pulgadas", etc. lo
-    # desvíen a cpu, disco, laptop, etc.
+    # ── PASO 0: Forzar categoría por palabras clave en título limpio ──
+    for palabra, cat in FORZAR_CATEGORIA.items():
+        if palabra in titulo_limpio:
+            return cat, True
+
+    # ── PASO 0: Televisores ──────────────────────────────────────
     if _es_tv(texto):
         return "monitor", True
 
-    # ── PASO 0b: Impresoras — cortocircuito antes de PC ───────────────────
-    # "all in one", "3 en 1", "epson" etc. deben ser impresora, no PC.
+    # ── PASO 0b: Impresoras ───────────────────────────────────────────
     if _es_impresora(texto):
-        # Confirmar que no es un monitor "todo en uno" de verdad
         es_pc_aio = any(k in texto for k in ["aio pc", "all in one pc", "pc all in one",
                                               "computadora all in one", "desktop all in one"])
         if not es_pc_aio:
@@ -652,10 +935,8 @@ def detectar_categoria_estricta(titulo: str, descripcion: str = "") -> tuple:
         if not reglas.get("es_equipo_completo", False):
             continue
 
-        # Manejo especial: "all in one" solo activa PC si no es impresora
         palabras_a_buscar = list(reglas["palabras_clave"])
         if categoria == "pc":
-            # Añadir "all in one" aquí solo si no es impresora (ya lo descartamos arriba)
             palabras_a_buscar.append("all in one")
 
         for palabra in palabras_a_buscar:
@@ -668,16 +949,33 @@ def detectar_categoria_estricta(titulo: str, descripcion: str = "") -> tuple:
     if "kit board" in texto or "kit de board" in texto or "board y micro" in texto:
         return "motherboard", True
 
+    _apu_keywords = ["3200g", "3400g", "4650g", "5600g", "5700g", "ryzen3", "ryzen5", "ryzen7"]
+    _board_keywords = ["a520", "b450", "b550", "b650", "a320", "h610", "h510", "b560", "b760",
+                       "pro de msi", "asus prime", "asrock"]
+    _tiene_apu = any(k in texto for k in _apu_keywords)
+    _tiene_board = any(k in texto for k in _board_keywords)
+    if _tiene_apu and _tiene_board:
+        return "motherboard", True
+
+    _intel_gen_kw = ["14th gen", "13th gen", "12th gen", "11th gen", "10th gen",
+                     "14600k", "13600k", "12600k", "13700k", "14700k", "14900k", "13900k"]
+    if any(k in texto for k in _intel_gen_kw):
+        return "cpu", True
+
     if ("kit mouse" in texto or "kit teclado" in texto or
             "mouse y teclado" in texto or "teclado y mouse" in texto):
         return "periferico", True
 
     # ── PASO 3: Monitores ─────────────────────────────────────────────────
+    _tiene_chasis_combo = any(k in texto for k in ["chasis", "gabinete", "torre", "case gamer",
+                                                    "mid tower", "full tower"])
     for categoria, reglas in REGLAS_CATEGORIA:
         if categoria != "monitor":
             continue
         for palabra in reglas["palabras_clave"]:
             if palabra in texto:
+                if _tiene_chasis_combo and palabra in ["monitor", "pulgadas", "display", "pantalla"]:
+                    continue
                 tiene_excluida = any(excluir in texto for excluir in reglas["excluir"])
                 if not tiene_excluida:
                     return categoria, True
@@ -693,18 +991,14 @@ def detectar_categoria_estricta(titulo: str, descripcion: str = "") -> tuple:
                     return categoria, True
 
     # ── PASO 5: CPU — manejo especial para i3/i5/i7/i9 ───────────────────
-    # Estos modelos son tan cortos que pueden aparecer en cualquier texto.
-    # Solo se activan si NO hay contexto de TV, router, chasis o impresora.
     MODELOS_CPU_CORTOS = ["i3", "i5", "i7", "i9"]
     cpu_reglas = next((r for c, r in REGLAS_CATEGORIA if c == "cpu"), None)
     if cpu_reglas:
         tiene_excluida_cpu = any(excluir in texto for excluir in cpu_reglas["excluir"])
         if not tiene_excluida_cpu:
-            # Primero verificar keywords largas de cpu (sin ambigüedad)
             for palabra in cpu_reglas["palabras_clave"]:
                 if palabra in texto:
                     return "cpu", True
-            # Luego, i3/i5/i7/i9 solo si hay contexto claro de CPU/PC
             contexto_cpu = any(c in texto for c in [
                 "procesador", "socket", "ghz", "núcleo", "nucleo", "core",
                 "intel", "amd", "generacion", "generación", "lga", "am4", "am5",
@@ -752,7 +1046,6 @@ def detectar_categoria_estricta(titulo: str, descripcion: str = "") -> tuple:
 
 
 def precio_valido(precio: float, categoria: str) -> bool:
-    """Verifica que el precio tenga sentido para la categoría"""
     if not precio or precio < PRECIO_MINIMO.get(categoria, 5):
         return False
     if precio > PRECIO_MAXIMO.get(categoria, 5000):
@@ -761,65 +1054,80 @@ def precio_valido(precio: float, categoria: str) -> bool:
 
 
 def es_busca_comprar(texto: str) -> bool:
-    """Detecta si el anuncio busca comprar en lugar de vender"""
     t = texto.lower()
     return any(frase in t for frase in BUSCA_COMPRAR)
 
 
 def es_servicio_taller(texto: str) -> bool:
-    """Detecta si es anuncio de taller o servicio"""
     t = texto.lower()
     return any(frase in t for frase in ES_SERVICIO)
 
 
 def detectar_provincia(raw: dict, fuente: str, grupo_provincia: str = None) -> str | None:
-    """Detecta provincia del anuncio"""
+    """
+    Detecta y normaliza provincia.
+    v8.6: tres niveles de búsqueda:
+      1. grupo_provincia (Facebook groups con provincia fija)
+      2. campo "provincia" del raw — búsqueda exacta en PROVINCIAS_NORM
+      3. campo "provincia" del raw — búsqueda parcial (subcadena) como fallback
+      4. texto libre (descripcion + titulo) — búsqueda por subcadena
+    """
+    # ── Nivel 1: provincia del grupo (Facebook) ───────────────────────────
     if grupo_provincia:
-        norm = PROVINCIAS_NORM.get(grupo_provincia.lower(), grupo_provincia)
+        clave = grupo_provincia.strip().lower()
+        norm = PROVINCIAS_NORM.get(clave)
+        if norm:
+            return norm
+        # Fallback parcial para grupo_provincia
+        for k, v in PROVINCIAS_NORM.items():
+            if k in clave or clave in k:
+                return v
+        return grupo_provincia  # devolver tal cual si no se reconoce
+
+    # ── Nivel 2: campo "provincia" — búsqueda exacta ──────────────────────
+    prov_raw = (raw.get("provincia") or "").strip()
+    if prov_raw:
+        clave = prov_raw.lower()
+        norm = PROVINCIAS_NORM.get(clave)
         if norm:
             return norm
 
-    prov = (raw.get("provincia") or "").strip().lower()
-    if prov:
-        norm = PROVINCIAS_NORM.get(prov)
-        if norm:
-            return norm
+        # ── Nivel 3: búsqueda parcial sobre el campo provincia ────────────
+        # Cubre casos como "Pinar del Río (ciudad)", "La Habana - Vedado", etc.
+        for k, v in PROVINCIAS_NORM.items():
+            if k in clave:
+                return v
 
+    # ── Nivel 4: búsqueda en texto libre ─────────────────────────────────
     texto = (
         (raw.get("contenido") or "") + " " +
         (raw.get("descripcion_completa") or "") + " " +
         (raw.get("titulo") or "")
     ).lower()
 
-    for clave, nombre in PROVINCIAS_NORM.items():
-        if clave in texto:
-            return nombre
+    if texto.strip():
+        for clave, nombre in PROVINCIAS_NORM.items():
+            if clave in texto:
+                return nombre
 
     return None
 
 
 def generar_titulo_limpio(contenido: str) -> str:
-    """Genera título limpio desde contenido"""
     if not contenido:
         return ""
-
     lineas = [l.strip() for l in contenido.split('\n') if l.strip()]
     if not lineas:
         return ""
-
     titulo = lineas[0]
     if len(titulo) < 10 and len(lineas) > 1:
         titulo = lineas[0] + " " + lineas[1]
-
     titulo = limpiar_texto(titulo)
-
     for patron in PREFIJOS_BASURA:
         titulo = re.sub(patron, '', titulo, flags=re.IGNORECASE).strip()
-
     titulo = titulo.strip(" .-,!?")
     if len(titulo) > 100:
         titulo = titulo[:100].rsplit(' ', 1)[0]
-
     return titulo
 
 
@@ -828,9 +1136,14 @@ def generar_titulo_limpio(contenido: str) -> str:
 # ─────────────────────────────────────────
 
 def procesar_revolico(raw: dict) -> dict | None:
-    """Procesa un anuncio de Revolico con reglas estrictas"""
-
-    # Validar título
+    """
+    Procesa un anuncio de Revolico.
+    v8.6 fixes:
+    - precio_usd leído directamente del JSON si el scraper ya lo calculó
+    - precio_texto incluido en la cadena de lectura de precio
+    - num_imagenes leído del campo homónimo además de contar lista "imagenes"
+    - imagen_principal leída del campo homónimo además de imagenes[0]
+    """
     titulo = limpiar_texto(raw.get("titulo") or "")
     if not titulo or len(titulo) < 3:
         return None
@@ -838,152 +1151,149 @@ def procesar_revolico(raw: dict) -> dict | None:
     descripcion = limpiar_texto(raw.get("descripcion_completa") or "")
     texto_completo = titulo + " " + descripcion
 
-    # 1. Eliminar si busca comprar
     if es_busca_comprar(texto_completo):
         return None
-
-    # 2. Eliminar si es taller/servicio
     if es_servicio_taller(texto_completo):
         return None
 
-    # 3. Validar teléfono
     telefono = mejor_telefono(raw, "revolico")
     if not telefono:
         return None
 
-    # 4. Validar precio
-    precio_raw = raw.get("precio_raw") or raw.get("precio") or ""
-    moneda = detectar_moneda(precio_raw)
+    # ── Precio ───────────────────────────────────────────────────────────
+    # Moneda: leer de precio_texto o precio_raw (no de precio_usd que ya es float)
+    precio_texto_raw = (
+        raw.get("precio_texto") or
+        raw.get("precio_raw") or
+        raw.get("precio") or
+        ""
+    )
+    moneda = detectar_moneda(precio_texto_raw)
     precio_usd = extraer_precio_usd(raw, "revolico", moneda)
-
     if not precio_usd:
         return None
 
-    # 5. Categoría estricta
+    # ── Categoría ─────────────────────────────────────────────────────────
     categoria_original = raw.get("categoria") or "otros"
     categoria, recat = detectar_categoria_estricta(titulo, descripcion)
 
-    # 6. Validar precio por categoría
     if not precio_valido(precio_usd, categoria):
         return None
 
-    # 7. Provincia
+    # ── Provincia ─────────────────────────────────────────────────────────
     provincia = detectar_provincia(raw, "revolico")
 
-    # 8. WhatsApp
+    # ── WhatsApp desde texto ──────────────────────────────────────────────
     whatsapp = None
     wa_match = re.search(r'wa\.me/\+?53?(\d{7,8})', texto_completo)
     if wa_match:
         whatsapp = limpiar_telefono(wa_match.group(1))
 
-    # 9. Limpiar título
+    # ── Limpiar título ────────────────────────────────────────────────────
     titulo_limpio = titulo
     for patron in PREFIJOS_BASURA:
         titulo_limpio = re.sub(patron, '', titulo_limpio, flags=re.IGNORECASE).strip()
     if len(titulo_limpio) < 3:
         titulo_limpio = titulo
+    titulo_limpio = limpiar_titulo_avanzado(titulo_limpio)
 
-    # 10. URL limpia
     url = re.split(r'\?', raw.get("url") or "")[0]
 
+    # ── FIX v8.6: num_imagenes e imagen_principal ─────────────────────────
+    # El scraper guarda num_imagenes como int e imagen_principal como str,
+    # no como lista "imagenes". Leemos ambos formatos.
+    imagenes_lista = raw.get("imagenes") or []
+    num_imagenes = raw.get("num_imagenes") or len(imagenes_lista)
+    imagen_principal = (
+        raw.get("imagen_principal") or
+        (imagenes_lista[0] if imagenes_lista else None)
+    )
+
     return {
-        "fuente": "revolico",
-        "url": url,
-        "titulo": titulo_limpio[:100],
-        "descripcion": descripcion[:500] if descripcion else None,
-        "categoria": categoria,
+        "fuente":            "revolico",
+        "url":               url,
+        "titulo":            titulo_limpio[:100],
+        "descripcion":       descripcion[:500] if descripcion else None,
+        "categoria":         categoria,
         "categoria_original": categoria_original,
-        "recategorizado": int(recat),
-        "precio_usd": precio_usd,
-        "moneda": moneda,
-        "precio_texto": limpiar_texto(precio_raw)[:50],
-        "telefono": telefono,
-        "whatsapp": whatsapp,
-        "vendedor": limpiar_texto(raw.get("vendedor") or "")[:50] or None,
-        "provincia": provincia,
-        "municipio": limpiar_texto(raw.get("municipio") or "")[:50] or None,
-        "fecha": (raw.get("fecha_exacta") or raw.get("scrapeado_en") or "")[:10] or None,
-        "vistas": raw.get("vistas"),
-        "num_imagenes": len(raw.get("imagenes") or []),
-        "imagen_principal": (raw.get("imagenes") or [None])[0],
+        "recategorizado":    int(recat),
+        "precio_usd":        precio_usd,
+        "moneda":            moneda,
+        "precio_texto":      limpiar_texto(precio_texto_raw)[:50],
+        "telefono":          telefono,
+        "whatsapp":          whatsapp,
+        "vendedor":          limpiar_texto(raw.get("vendedor") or "")[:50] or None,
+        "provincia":         provincia,
+        "municipio":         limpiar_texto(raw.get("municipio") or "")[:50] or None,
+        "fecha":             (raw.get("fecha_exacta") or raw.get("scrapeado_en") or "")[:10] or None,
+        "vistas":            raw.get("vistas"),
+        "num_imagenes":      num_imagenes,
+        "imagen_principal":  imagen_principal,
     }
 
 
 def procesar_facebook(raw: dict) -> dict | None:
     """Procesa un post de Facebook con reglas estrictas"""
-
     contenido = raw.get("contenido") or ""
     if not contenido or len(contenido) < 10:
         return None
 
-    # 1. Eliminar si busca comprar
     if es_busca_comprar(contenido):
         return None
-
-    # 2. Eliminar si es taller/servicio
     if es_servicio_taller(contenido):
         return None
 
-    # 3. Generar título
     titulo = generar_titulo_limpio(contenido)
     if not titulo or len(titulo) < 5:
         return None
 
-    # 4. Validar teléfono
     telefono = mejor_telefono(raw, "facebook")
     if not telefono:
         return None
 
-    # 5. Validar precio
     moneda_raw = raw.get("moneda") or ""
     moneda = detectar_moneda(moneda_raw) if moneda_raw else "USD"
     precio_usd = extraer_precio_usd(raw, "facebook", moneda)
-
     if not precio_usd:
         return None
 
-    # 6. Categoría estricta
     tipo_original = raw.get("tipo_equipo") or "otros"
     categoria, recat = detectar_categoria_estricta(titulo, contenido)
 
-    # 7. Validar precio por categoría
     if not precio_valido(precio_usd, categoria):
         return None
 
-    # 8. Provincia
     provincia = detectar_provincia(raw, "facebook", raw.get("provincia"))
 
-    # 9. WhatsApp
     whatsapp = None
     wa_match = re.search(r'wa\.me/\+?53?(\d{7,8})', contenido)
     if wa_match:
         whatsapp = limpiar_telefono(wa_match.group(1))
 
-    # 10. Vendedor
     vendedor = raw.get("autor") or None
     if vendedor and len(vendedor) < 2:
         vendedor = None
 
     return {
-        "fuente": "facebook",
-        "url": raw.get("url") or "",
-        "titulo": titulo[:100],
-        "descripcion": limpiar_texto(contenido)[:500],
-        "categoria": categoria,
+        "fuente":            "facebook",
+        "url":               raw.get("url") or "",
+        "titulo":            titulo[:100],
+        "descripcion":       limpiar_texto(contenido)[:500],
+        "categoria":         categoria,
         "categoria_original": tipo_original,
-        "recategorizado": int(recat),
-        "precio_usd": precio_usd,
-        "moneda": "USD",
-        "precio_texto": f"{raw.get('precio')} {raw.get('moneda')}" if raw.get("precio") else "",
-        "telefono": telefono,
-        "whatsapp": whatsapp,
-        "vendedor": vendedor[:50] if vendedor else None,
-        "provincia": provincia,
-        "municipio": None,
-        "fecha": (raw.get("fecha_extraccion") or raw.get("fecha_post") or "")[:10] or None,
-        "vistas": None,
-        "num_imagenes": 0,
-        "imagen_principal": None,
+        "recategorizado":    int(recat),
+        "precio_usd":        precio_usd,
+        "moneda":            "USD",
+        "precio_texto":      f"{raw.get('precio')} {raw.get('moneda')}" if raw.get("precio") else "",
+        "telefono":          telefono,
+        "whatsapp":          whatsapp,
+        "vendedor":          vendedor[:50] if vendedor else None,
+        "provincia":         provincia,
+        "municipio":         None,
+        "fecha":             (raw.get("fecha_extraccion") or raw.get("fecha_post") or "")[:10] or None,
+        "vistas":            None,
+        "num_imagenes":      0,
+        "imagen_principal":  None,
     }
 
 
@@ -992,7 +1302,6 @@ def procesar_facebook(raw: dict) -> dict | None:
 # ─────────────────────────────────────────
 
 def cargar_revolico() -> list:
-    """Carga todos los archivos de Revolico"""
     archivos = sorted(RAW_REVOLICO.glob("*.json"))
     todos = []
     print(f"\n  Revolico: {len(archivos)} archivos")
@@ -1029,7 +1338,6 @@ def cargar_revolico() -> list:
 
 
 def cargar_facebook() -> list:
-    """Carga todos los archivos de Facebook"""
     archivos_grupos = list(RAW_FACEBOOK.glob("grupo_*.json"))
     archivos_viejos = list(RAW_FACEBOOK.glob("facebook_ofertas_*.json"))
     archivos_viejos += list(RAW_FACEBOOK.glob("ultimas_ofertas.json"))
@@ -1087,7 +1395,6 @@ COLUMNAS_NUMERICAS = {"precio_usd", "recategorizado", "vistas", "num_imagenes"}
 
 
 def guardar_sqlite(productos: list) -> int:
-    """Guarda los productos en SQLite"""
     conn = sqlite3.connect(str(DB_PATH))
     conn.execute("DROP TABLE IF EXISTS productos")
 
@@ -1102,13 +1409,13 @@ def guardar_sqlite(productos: list) -> int:
             {', '.join(defs)}
         )
     """)
-    conn.execute("CREATE INDEX idx_cat ON productos(categoria)")
-    conn.execute("CREATE INDEX idx_prov ON productos(provincia)")
-    conn.execute("CREATE INDEX idx_prec ON productos(precio_usd)")
-    conn.execute("CREATE INDEX idx_tel ON productos(telefono)")
+    conn.execute("CREATE INDEX idx_cat   ON productos(categoria)")
+    conn.execute("CREATE INDEX idx_prov  ON productos(provincia)")
+    conn.execute("CREATE INDEX idx_prec  ON productos(precio_usd)")
+    conn.execute("CREATE INDEX idx_tel   ON productos(telefono)")
     conn.execute("CREATE INDEX idx_fuent ON productos(fuente)")
 
-    ph = ", ".join(["?" for _ in COLUMNAS])
+    ph  = ", ".join(["?" for _ in COLUMNAS])
     sql = f"INSERT OR IGNORE INTO productos ({', '.join(COLUMNAS)}) VALUES ({ph})"
     filas = [tuple(p.get(c) for c in COLUMNAS) for p in productos]
     conn.executemany(sql, filas)
@@ -1122,7 +1429,6 @@ def guardar_sqlite(productos: list) -> int:
 
 
 def guardar_csvs(productos: list):
-    """Guarda los productos en CSV por categoría"""
     por_cat = defaultdict(list)
     for p in productos:
         por_cat[p["categoria"]].append(p)
@@ -1156,16 +1462,21 @@ def guardar_csvs(productos: list):
 
 def main():
     print("\n" + "=" * 60)
-    print("  CUBA PRECIOS — LIMPIEZA ESTRICTA v8.4")
+    print("  CUBA PRECIOS — LIMPIEZA ESTRICTA v8.6")
     print("  JERARQUÍA: TV → IMPRESORA → PC/LAPTOP → COMPONENTES")
+    print("  + FIXES: precio_usd directo, provincias completas")
     print("=" * 60)
-    print("\n  CORRECCIONES v8.4 APLICADAS:")
+    print("\n  CORRECCIONES v8.6 APLICADAS:")
+    print("  ✓ precio_usd leído directamente del JSON del scraper")
+    print("  ✓ precio_texto incluido en cadena de lectura de precio")
+    print("  ✓ num_imagenes e imagen_principal leídos del campo homónimo")
+    print("  ✓ PROVINCIAS_NORM: cobertura total (>120 entradas)")
+    print("  ✓ detectar_provincia(): 4 niveles (exacto, parcial, fallback texto)")
     print("  ✓ Televisor/Smart TV → MONITOR (filtro prioritario)")
     print("  ✓ Impresora 'all in one' → IMPRESORA (no PC)")
     print("  ✓ Router D-Link/AC3000/AX → MODEM")
-    print("  ✓ Chasis gaming con RGB/LED → CHASIS (ya no se autoexcluye)")
+    print("  ✓ Chasis gaming con RGB/LED → CHASIS")
     print("  ✓ i3/i5/i7 solo activan CPU con contexto técnico")
-    print("  ✓ 'televisor' y 'smart tv' en excluir de pc/laptop/cpu/disco/gpu/ram")
     print(f"\n  Tasa CUP: {TASA_CUP_USD} | MLC: {TASA_MLC_USD}")
     print("=" * 60)
 
@@ -1205,8 +1516,8 @@ def main():
     guardar_csvs(todos)
 
     # Estadísticas
-    por_cat = defaultdict(int)
-    por_prov = defaultdict(int)
+    por_cat   = defaultdict(int)
+    por_prov  = defaultdict(int)
     por_fuent = defaultdict(int)
     recat_count = 0
 
@@ -1217,9 +1528,9 @@ def main():
         if p.get("recategorizado"):
             recat_count += 1
 
-    con_tel = sum(1 for p in todos if p["telefono"])
+    con_tel  = sum(1 for p in todos if p["telefono"])
     con_prov = sum(1 for p in todos if p["provincia"])
-    precios = [p["precio_usd"] for p in todos if p["precio_usd"]]
+    precios  = [p["precio_usd"] for p in todos if p["precio_usd"]]
 
     print(f"\n{'=' * 60}")
     print("  RESUMEN FINAL")
@@ -1242,7 +1553,7 @@ def main():
 
     print(f"\n  POR PROVINCIA (top 10):")
     for prov, n in sorted(por_prov.items(), key=lambda x: -x[1])[:10]:
-        print(f"    {prov:<25} {n:>4}")
+        print(f"    {prov:<30} {n:>4}")
 
     print(f"\n  💱 Tasa: 1 USD = {TASA_CUP_USD} CUP")
     print(f"  📁 Datos en: {CLEAN_DIR}")
